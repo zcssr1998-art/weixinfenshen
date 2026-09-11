@@ -6,6 +6,7 @@ final class KeychainStore: ObservableObject {
     @Published private(set) var token: String = ""
     @Published private(set) var statusText: String = "尚未测试"
     @Published private(set) var statusCode: OSStatus = errSecSuccess
+    @Published private(set) var accessGroup: String = "尚未读取"
 
     init() {
         refresh()
@@ -18,9 +19,10 @@ final class KeychainStore: ObservableObject {
     func refresh() {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: InstanceEnvironment.keychainService,
-            kSecAttrAccount as String: InstanceEnvironment.keychainAccount,
+            kSecAttrService as String: InstanceEnvironment.privateKeychainService,
+            kSecAttrAccount as String: InstanceEnvironment.privateKeychainAccount,
             kSecReturnData as String: true,
+            kSecReturnAttributes as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
 
@@ -30,21 +32,36 @@ final class KeychainStore: ObservableObject {
 
         switch status {
         case errSecSuccess:
-            guard let data = item as? Data,
-                  let value = String(data: data, encoding: .utf8) else {
+            guard let dict = item as? [String: Any] else {
                 token = ""
-                statusText = "读取成功，但数据格式异常"
+                statusText = "读取成功，但结果格式异常"
+                accessGroup = "无法解析"
                 return
             }
-            token = value
+
+            if let data = dict[kSecValueData as String] as? Data,
+               let value = String(data: data, encoding: .utf8) {
+                token = value
+            } else {
+                token = ""
+            }
+
+            if let group = dict[kSecAttrAccessGroup as String] as? String, !group.isEmpty {
+                accessGroup = group
+            } else {
+                accessGroup = "系统未返回"
+            }
+
             statusText = "读取成功"
 
         case errSecItemNotFound:
             token = ""
+            accessGroup = "暂无条目；生成令牌后读取"
             statusText = "当前实例尚无 Keychain 令牌"
 
         default:
             token = ""
+            accessGroup = "读取失败"
             statusText = "读取失败：\(status)"
         }
     }
@@ -55,8 +72,8 @@ final class KeychainStore: ObservableObject {
 
         let lookup: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: InstanceEnvironment.keychainService,
-            kSecAttrAccount as String: InstanceEnvironment.keychainAccount
+            kSecAttrService as String: InstanceEnvironment.privateKeychainService,
+            kSecAttrAccount as String: InstanceEnvironment.privateKeychainAccount
         ]
 
         let update: [String: Any] = [
@@ -81,8 +98,8 @@ final class KeychainStore: ObservableObject {
     func deleteToken() {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: InstanceEnvironment.keychainService,
-            kSecAttrAccount as String: InstanceEnvironment.keychainAccount
+            kSecAttrService as String: InstanceEnvironment.privateKeychainService,
+            kSecAttrAccount as String: InstanceEnvironment.privateKeychainAccount
         ]
 
         let status = SecItemDelete(query as CFDictionary)
