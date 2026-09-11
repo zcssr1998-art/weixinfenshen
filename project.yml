@@ -7,8 +7,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    CURRENT_PROJECT_VERSION: 1
-    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 2
+    MARKETING_VERSION: 0.2.0
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     TARGETED_DEVICE_FAMILY: "1"
     SUPPORTS_MACCATALYST: NO
@@ -19,15 +19,23 @@ targets:
     platform: iOS
     sources:
       - Sources
+    info:
+      path: Config/DualChatA-Info.plist
+      properties:
+        CFBundleDisplayName: "双开 A"
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Editor
+            CFBundleURLName: art.zcssr.dualchat.a
+            CFBundleURLSchemes:
+              - dualchata
+        LSApplicationCategoryType: public.app-category.utilities
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: art.zcssr.dualchat.a
         PRODUCT_NAME: DualChatA
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: "双开 A"
-        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         CODE_SIGN_STYLE: Automatic
     scheme:
       gatherCoverageData: false
@@ -37,15 +45,23 @@ targets:
     platform: iOS
     sources:
       - Sources
+    info:
+      path: Config/DualChatB-Info.plist
+      properties:
+        CFBundleDisplayName: "双开 B"
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Editor
+            CFBundleURLName: art.zcssr.dualchat.b
+            CFBundleURLSchemes:
+              - dualchatb
+        LSApplicationCategoryType: public.app-category.utilities
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: art.zcssr.dualchat.b
         PRODUCT_NAME: DualChatB
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: "双开 B"
-        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.utilities
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         CODE_SIGN_STYLE: Automatic
     scheme:
       gatherCoverageData: false
