@@ -1,0 +1,53 @@
+name: Build DualChat PoC
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build simulator targets
+        run: |
+          set -o pipefail
+          xcodebuild -project DualChatPoC.xcodeproj -scheme DualChatA -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+          xcodebuild -project DualChatPoC.xcodeproj -scheme DualChatB -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+
+      - name: Build unsigned device apps
+        run: |
+          set -o pipefail
+          xcodebuild -project DualChatPoC.xcodeproj -scheme DualChatA -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/A CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+          xcodebuild -project DualChatPoC.xcodeproj -scheme DualChatB -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/B CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+
+      - name: Package unsigned IPA files
+        run: |
+          set -e
+          mkdir -p artifacts/A/Payload artifacts/B/Payload
+          cp -R build/A/Build/Products/Release-iphoneos/DualChatA.app artifacts/A/Payload/
+          cp -R build/B/Build/Products/Release-iphoneos/DualChatB.app artifacts/B/Payload/
+          (cd artifacts/A && zip -qry ../DualChatA-unsigned.ipa Payload)
+          (cd artifacts/B && zip -qry ../DualChatB-unsigned.ipa Payload)
+          shasum -a 256 artifacts/*.ipa
+
+      - name: Upload IPA artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: DualChatPoC-unsigned-IPA
+          path: |
+            artifacts/DualChatA-unsigned.ipa
+            artifacts/DualChatB-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14
