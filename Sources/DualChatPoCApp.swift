@@ -4,6 +4,7 @@ import SwiftUI
 struct DualChatPoCApp: App {
     @StateObject private var store = LocalAccountStore()
     @StateObject private var keychain = KeychainStore()
+    @StateObject private var sharedProbe = SharedKeychainProbe()
     @StateObject private var appGroup = AppGroupDiagnostics()
     @StateObject private var deepLink = DeepLinkStore()
 
@@ -12,6 +13,7 @@ struct DualChatPoCApp: App {
             ContentView()
                 .environmentObject(store)
                 .environmentObject(keychain)
+                .environmentObject(sharedProbe)
                 .environmentObject(appGroup)
                 .environmentObject(deepLink)
                 .onOpenURL { url in
