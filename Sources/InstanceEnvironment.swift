@@ -29,8 +29,16 @@ enum InstanceEnvironment {
         isA ? "dualchatb" : "dualchata"
     }
 
-    // 两个实例故意使用完全相同的 service/account。
-    // 若读取结果仍彼此独立，证明默认 Keychain access group 已由签名身份隔离。
-    static let keychainService = "DualChatPoC.SharedService"
-    static let keychainAccount = "session-token"
+    // Phase 2.1：业务层显式按 Bundle ID 隔离 Keychain 命名空间。
+    // 即使第三方自签把两个 App 放进同一个可访问 Keychain group，
+    // A/B 也不会再因为 service/account 相同而覆盖同一条记录。
+    static var privateKeychainService: String {
+        "DualChatPoC.Private.\(bundleID)"
+    }
+
+    static let privateKeychainAccount = "session-token"
+
+    // 保留一个共享探针名称，仅用于诊断签名是否让 A/B 共享默认 Keychain group。
+    static let sharedProbeService = "DualChatPoC.SharedProbe"
+    static let sharedProbeAccount = "shared-probe"
 }
