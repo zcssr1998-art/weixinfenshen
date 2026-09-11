@@ -4,6 +4,7 @@ import UIKit
 struct ContentView: View {
     @EnvironmentObject private var store: LocalAccountStore
     @EnvironmentObject private var keychain: KeychainStore
+    @EnvironmentObject private var sharedProbe: SharedKeychainProbe
     @EnvironmentObject private var appGroup: AppGroupDiagnostics
     @EnvironmentObject private var deepLink: DeepLinkStore
     @Environment(\.openURL) private var openURL
@@ -21,6 +22,7 @@ struct ContentView: View {
                 accountSection
                 sandboxSection
                 keychainSection
+                signingProbeSection
                 deepLinkSection
                 appGroupSection
                 diagnosticsSection
@@ -32,7 +34,7 @@ struct ContentView: View {
                     }
                 }
             }
-            .navigationTitle("双开架构 PoC · Phase 2")
+            .navigationTitle("双开架构 PoC · Phase 2.1")
             .confirmationDialog("只清空当前这个实例的 UserDefaults 数据？", isPresented: $showResetConfirmation) {
                 Button("清空", role: .destructive) {
                     store.resetLocalData()
@@ -71,14 +73,10 @@ struct ContentView: View {
             }
 
             if store.isLoggedIn {
-                Button("退出这个实例") {
-                    store.logout()
-                }
+                Button("退出这个实例") { store.logout() }
             } else {
-                Button("登录这个实例") {
-                    store.login()
-                }
-                .disabled(store.accountName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("登录这个实例") { store.login() }
+                    .disabled(store.accountName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
     }
@@ -89,20 +87,29 @@ struct ContentView: View {
             TextField("只保存在当前实例里的备注", text: $store.note, axis: .vertical)
                 .lineLimit(2...5)
 
-            Text("Phase 1 已由你的真机验证：A=账号甲/计数7，而 B=未登录/计数0。说明 Bundle Identity、UserDefaults 与应用沙箱已经彼此独立。")
+            Text("Phase 1 已真机验证：A/B 的 Bundle Identity、UserDefaults 与应用沙箱彼此独立。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
     }
 
     private var keychainSection: some View {
-        Section("Keychain 安全存储隔离") {
+        Section("Keychain · 业务层隔离") {
             HStack {
                 Circle()
                     .frame(width: 10, height: 10)
                     .foregroundStyle(keychain.hasToken ? .green : .secondary)
                 Text(keychain.statusText)
                     .font(.subheadline)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("本实例 Keychain Service")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(InstanceEnvironment.privateKeychainService)
+                    .font(.caption2.monospaced())
+                    .textSelection(.enabled)
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -114,11 +121,20 @@ struct ContentView: View {
                     .textSelection(.enabled)
             }
 
+            VStack(alignment: .leading, spacing: 6) {
+                Text("该条目实际 Access Group")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(keychain.accessGroup)
+                    .font(.caption2.monospaced())
+                    .textSelection(.enabled)
+            }
+
             Button(keychain.hasToken ? "覆盖生成本实例令牌" : "生成本实例令牌") {
                 keychain.generateOrReplaceToken()
             }
 
-            Button("重新读取 Keychain") {
+            Button("重新读取本实例 Keychain") {
                 keychain.refresh()
             }
 
@@ -128,7 +144,51 @@ struct ContentView: View {
                 }
             }
 
-            Text("A/B 故意使用完全相同的 Keychain service 与 account。分别生成令牌后，如果两个 App 仍只能读到自己的值，就证明签名身份对应的默认 Keychain access group 也已经隔离。")
+            Text("Phase 2.1 不再故意共用同一个 service。A/B 现在按 Bundle ID 使用不同 Keychain 命名空间，因此即使第三方自签让两个 App 共享某个 access group，也不应再互相覆盖这条业务令牌。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var signingProbeSection: some View {
+        Section("Keychain · 签名层诊断") {
+            Text("这一组故意让 A/B 使用完全相同的 service/account，只用于确认你的自签环境是否让两个 App 共享 Keychain 可访问组。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            LabeledContent("状态", value: sharedProbe.statusText)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("当前读到的共享探针")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(sharedProbe.observedValue)
+                    .font(.caption.monospaced())
+                    .textSelection(.enabled)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("共享探针所属 Access Group")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(sharedProbe.observedAccessGroup)
+                    .font(.caption2.monospaced())
+                    .textSelection(.enabled)
+            }
+
+            Button("写入 \(InstanceEnvironment.shortName) 的共享探针") {
+                sharedProbe.writeMyMarker()
+            }
+
+            Button("只读取共享探针") {
+                sharedProbe.readProbe()
+            }
+
+            Button("删除共享探针", role: .destructive) {
+                sharedProbe.deleteProbe()
+            }
+
+            Text("验证：A 写入后，打开 B 只点『读取』。如果 B 能看到 A-probe，说明当前签名确实给了 A/B 至少一个共同可访问的 Keychain group。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -160,10 +220,6 @@ struct ContentView: View {
                     openURL(url)
                 }
             }
-
-            Text("如果点按钮能直接跳到另一个 App，并在对方『最近收到』里显示 URL，说明两个实例的 URL 路由也能独立配置。这类能力会影响登录回调、支付回调和第三方授权。")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
         }
     }
 
@@ -189,9 +245,7 @@ struct ContentView: View {
                         .textSelection(.enabled)
                 }
 
-                Button("写入 App Group 标记") {
-                    appGroup.writeMarker()
-                }
+                Button("写入 App Group 标记") { appGroup.writeMarker() }
 
                 if !appGroup.markerText.isEmpty {
                     Text(appGroup.markerText)
@@ -200,13 +254,7 @@ struct ContentView: View {
                 }
             }
 
-            Button("重新检测 App Group") {
-                appGroup.refresh()
-            }
-
-            Text("这一版只做预检，不强行把 App Group entitlement 塞进自签 IPA。原因是第三方签名所用的 provisioning profile 若没有对应权限，强行声明反而可能导致安装失败。后续拿到匹配的开发者签名后再开启。")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            Button("重新检测 App Group") { appGroup.refresh() }
         }
     }
 
@@ -225,7 +273,7 @@ struct ContentView: View {
 
     private var boundarySection: some View {
         Section("当前阶段") {
-            Text("Phase 2 仍不包含微信代码、不模拟微信协议，也不绕过任何第三方授权。现在验证的是复杂 App 双实例最基础的四层：Bundle Identity、沙箱/UserDefaults、Keychain、URL 路由；同时预检 App Group。")
+            Text("Phase 2.1 仍只验证我们自己控制的 PoC。重点是区分『业务命名空间隔离』和『签名层 access group 隔离』，避免把第三方自签造成的共享误判成 iOS 双开本身失败。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -236,6 +284,7 @@ struct ContentView: View {
     ContentView()
         .environmentObject(LocalAccountStore())
         .environmentObject(KeychainStore())
+        .environmentObject(SharedKeychainProbe())
         .environmentObject(AppGroupDiagnostics())
         .environmentObject(DeepLinkStore())
 }
