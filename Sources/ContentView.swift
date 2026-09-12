@@ -15,6 +15,14 @@ struct ContentView: View {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.path ?? "Unavailable"
     }
 
+    private var isolationColor: Color {
+        switch keychain.isolationState {
+        case .unknown: return .orange
+        case .passed: return .green
+        case .failed: return .red
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -34,7 +42,7 @@ struct ContentView: View {
                     }
                 }
             }
-            .navigationTitle("双开架构 PoC · Phase 2.1")
+            .navigationTitle("双开架构 PoC · Phase 2.2")
             .confirmationDialog("只清空当前这个实例的 UserDefaults 数据？", isPresented: $showResetConfirmation) {
                 Button("清空", role: .destructive) {
                     store.resetLocalData()
@@ -103,6 +111,25 @@ struct ContentView: View {
                     .font(.subheadline)
             }
 
+            HStack(alignment: .top) {
+                Circle()
+                    .frame(width: 10, height: 10)
+                    .foregroundStyle(isolationColor)
+                    .padding(.top, 4)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("冷启动隔离自检")
+                        .font(.subheadline.weight(.semibold))
+                    Text(keychain.isolationCheckText)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            LabeledContent("基准指纹", value: keychain.expectedFingerprintPreview)
+                .font(.caption)
+            LabeledContent("当前指纹", value: keychain.actualFingerprintPreview)
+                .font(.caption)
+
             VStack(alignment: .leading, spacing: 6) {
                 Text("本实例 Keychain Service")
                     .font(.caption)
@@ -130,7 +157,7 @@ struct ContentView: View {
                     .textSelection(.enabled)
             }
 
-            Button(keychain.hasToken ? "覆盖生成本实例令牌" : "生成本实例令牌") {
+            Button(keychain.hasToken ? "覆盖生成本实例令牌并重建基准" : "生成本实例令牌并建立基准") {
                 keychain.generateOrReplaceToken()
             }
 
@@ -144,7 +171,11 @@ struct ContentView: View {
                 }
             }
 
-            Text("Phase 2.1 不再故意共用同一个 service。A/B 现在按 Bundle ID 使用不同 Keychain 命名空间，因此即使第三方自签让两个 App 共享某个 access group，也不应再互相覆盖这条业务令牌。")
+            Text("Phase 2.2 会把当前实例自己生成的令牌保存为 SHA-256 指纹基准。以后每次冷启动都会自动重新读取 Keychain 并比对；如果 A/B 串读、令牌被另一个实例覆盖或持久化异常，这里会直接变红。指纹保存在各自独立的 UserDefaults，不保存明文令牌。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            Text("建议验证顺序：A 建立基准 → 彻底关闭 A → B 建立基准 → 彻底关闭 B → 先开 A 看自检 → 再开 B 看自检 → 交换启动顺序再测一次。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -273,7 +304,7 @@ struct ContentView: View {
 
     private var boundarySection: some View {
         Section("当前阶段") {
-            Text("Phase 2.1 仍只验证我们自己控制的 PoC。重点是区分『业务命名空间隔离』和『签名层 access group 隔离』，避免把第三方自签造成的共享误判成 iOS 双开本身失败。")
+            Text("Phase 2.2 仍只验证我们自己控制的 PoC。当前目标是把『A/B 冷启动后到底有没有串读持久化状态』变成可重复、可观察的测试结果，然后再进入 Extension、通知与具体目标应用兼容性边界。")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
