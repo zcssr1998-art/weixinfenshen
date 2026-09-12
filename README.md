@@ -21,16 +21,28 @@
 
 因此已确认：Bundle Identity、UserDefaults 和 App 沙箱彼此独立。
 
-## Phase 2：Keychain + URL Scheme + App Group 预检
+## Phase 2.1：Keychain + URL Scheme + 签名诊断
 
-### Keychain
+### 业务 Keychain
 
-A/B 故意使用**相同的 Keychain service 和 account 名**。分别生成安全令牌：
+A/B 的业务令牌现在按 Bundle ID 使用不同的 Keychain service：
 
-1. A 生成令牌，记录 `A-...`。
-2. B 生成令牌，记录 `B-...`。
-3. 在 A/B 分别点击“重新读取 Keychain”。
-4. 若各自始终只读到自己的令牌，则默认 Keychain access group 隔离成立。
+- A：`DualChatPoC.Private.art.zcssr.dualchat.a`
+- B：`DualChatPoC.Private.art.zcssr.dualchat.b`
+
+这样即使第三方自签环境让两个 App 落入同一个可访问 Keychain group，也不会因为相同 service/account 直接覆盖同一条业务记录。
+
+### 共享 Keychain 探针
+
+项目另外保留一套故意相同的 `service/account`，只用于判断签名后的 A/B 是否共享某个 Keychain access group。
+
+验证方式：
+
+1. A 写入 `A-probe-*`。
+2. 打开 B，只读取共享探针。
+3. 如果 B 能看到 A 的 marker，则说明当前签名配置让两个实例至少共享一个可访问 Keychain group。
+
+这不等同于业务令牌一定会串读；业务令牌已经使用独立命名空间。
 
 ### URL Scheme
 
@@ -41,7 +53,32 @@ A/B 分别注册：
 
 在任一实例点击“唤起另一个实例”。若能跳转到另一个 App，并在目标实例中显示收到的 URL，则实例路由配置成功。
 
-### App Group
+## Phase 2.2：冷启动隔离自检
+
+这一阶段专门处理此前出现过的现象：**A/B 在当前运行期间看起来各自正常，但彻底关闭后重新打开，B 又读到了 A 的令牌。**
+
+现在每个实例在自己生成业务令牌时，会在本实例独立的 `UserDefaults` 中保存该令牌的 SHA-256 指纹基准。以后每次 App 启动、重新读取 Keychain 时都会自动比对：
+
+- 绿色：当前 Keychain 令牌与本实例历史基准一致。
+- 红色：当前读取结果与本实例基准不一致，说明存在跨实例串读、覆盖或其他持久化异常。
+- 橙色：还没有建立基准，或旧版本遗留令牌无法直接判断。
+
+只保存指纹，不把 Keychain 明文令牌复制进 UserDefaults。
+
+### 必测回归顺序
+
+1. A 生成本实例令牌并建立基准。
+2. 彻底关闭 A。
+3. B 生成本实例令牌并建立基准。
+4. 彻底关闭 B。
+5. 重开 A，确认“冷启动隔离自检”为绿色。
+6. 重开 B，确认“冷启动隔离自检”为绿色。
+7. 再以 B → A 的顺序重复一次。
+8. 同时记录 A/B 的 Bundle ID、业务 Keychain Service、Access Group、基准指纹与当前指纹。
+
+只有以上冷启动顺序通过，才把 Keychain 隔离标记为真机验证完成。
+
+## App Group
 
 当前版本只做预检，不强制加入 `com.apple.security.application-groups` entitlement。第三方自签使用的 provisioning profile 如果没有对应 App Group 权限，强行声明 entitlement 可能导致安装失败。
 
@@ -77,12 +114,14 @@ open DualChatPoC.xcodeproj
 - [x] 独立 UserDefaults 状态
 - [x] 独立 App Container / Documents 路径
 - [x] Phase 1 真机双实例验证
-- [x] Keychain 隔离测试代码
+- [x] Keychain 独立业务命名空间
+- [x] 共享 Keychain signing probe
+- [x] 冷启动 Keychain 指纹自检
 - [x] 独立 URL Scheme / 跨实例唤起测试
 - [x] App Group 权限预检
 - [x] GitHub Actions Simulator + iphoneos 构建
 - [x] 自动打包两个 unsigned IPA
-- [ ] Phase 2 真机 Keychain / URL Scheme 验证
+- [ ] Phase 2.2 真机冷启动 A/B 回归验证
 - [ ] 正式 App Group entitlement + provisioning 验证
 - [ ] Extension 隔离实验
 - [ ] Push Notification 身份/Token 行为实验
